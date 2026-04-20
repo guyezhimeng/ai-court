@@ -1,7 +1,0 @@
-{
-  "model": "gpt-4o-mini",
-  "api_url": "",
-  "api_key": "",
-  "max_tokens": 1000,
-  "temperature": 0.5
-}
