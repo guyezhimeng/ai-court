@@ -1,7 +1,0 @@
-{
-  "model": "deepseek-chat",
-  "api_url": "",
-  "api_key": "",
-  "max_tokens": 2000,
-  "temperature": 0.3
-}
