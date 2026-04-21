@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import Column, String, Text, Integer, Boolean, BigInteger, DateTime
 from sqlalchemy.dialects.postgresql import UUID, JSONB
@@ -18,5 +18,5 @@ class OutboxEvent(Base):
     published = Column(Boolean, default=False, index=True)
     attempts = Column(Integer, default=0)
     last_error = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     published_at = Column(DateTime, nullable=True)

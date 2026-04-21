@@ -1,143 +1,160 @@
-import { useEffect } from 'react';
-import { useStore } from '@/store';
+import { useEffect, useState } from 'react';
+import { LayoutDashboard, Clock, CheckCircle, XCircle, ArrowRight, RefreshCw } from 'lucide-react';
 import { api } from '@/api';
+import { useStore } from '@/store';
 
-const STATE_COLORS: Record<string, string> = {
-  Taizi: 'bg-blue-500/20 text-blue-400',
-  Zhongshu: 'bg-purple-500/20 text-purple-400',
-  Menxia: 'bg-amber-500/20 text-amber-400',
-  Assigned: 'bg-cyan-500/20 text-cyan-400',
-  Doing: 'bg-green-500/20 text-green-400',
-  Review: 'bg-teal-500/20 text-teal-400',
-  Done: 'bg-court-ok/20 text-court-ok',
-  Blocked: 'bg-red-500/20 text-red-400',
-  Cancelled: 'bg-gray-500/20 text-gray-400',
+const STATE_INFO: Record<string, { label: string; color: string }> = {
+  Taizi: { label: '太子分拣', color: 'border-l-yellow-500' },
+  Zhongshu: { label: '中书拟旨', color: 'border-l-blue-500' },
+  Menxia: { label: '门下审核', color: 'border-l-purple-500' },
+  Shangshu: { label: '尚书执行', color: 'border-l-orange-500' },
+  Hubu: { label: '户部', color: 'border-l-green-500' },
+  Libu: { label: '礼部', color: 'border-l-pink-500' },
+  Bingbu: { label: '兵部', color: 'border-l-red-500' },
+  Xingbu: { label: '刑部', color: 'border-l-amber-500' },
+  Gongbu: { label: '工部', color: 'border-l-cyan-500' },
+  Done: { label: '已完成', color: 'border-l-green-500' },
+  Rejected: { label: '已驳回', color: 'border-l-red-500' },
 };
-
-const STATE_LABELS: Record<string, string> = {
-  Taizi: '太子分拣',
-  Zhongshu: '中书起草',
-  Menxia: '门下审议',
-  Assigned: '尚书派发',
-  Doing: '六部执行',
-  Review: '审查汇总',
-  Done: '已完成',
-  Blocked: '已阻塞',
-  Cancelled: '已取消',
-};
-
-const PIPE = [
-  { key: 'Taizi', label: '太子', icon: '🤴' },
-  { key: 'Zhongshu', label: '中书省', icon: '📜' },
-  { key: 'Menxia', label: '门下省', icon: '🔍' },
-  { key: 'Assigned', label: '尚书省', icon: '📮' },
-  { key: 'Doing', label: '六部', icon: '⚙️' },
-  { key: 'Review', label: '汇总', icon: '🔎' },
-  { key: 'Done', label: '完成', icon: '✅' },
-];
-
-function MiniPipe({ currentState }: { currentState: string }) {
-  const stateOrder = ['Taizi', 'Zhongshu', 'Menxia', 'Assigned', 'Doing', 'Review', 'Done'];
-  const currentIdx = stateOrder.indexOf(currentState);
-
-  return (
-    <div className="flex items-center gap-1">
-      {PIPE.map((step, i) => {
-        const isActive = step.key === currentState;
-        const isDone = i < currentIdx;
-        return (
-          <div key={step.key} className="flex items-center gap-1">
-            <div
-              className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] transition-all ${
-                isActive ? 'bg-court-acc text-white scale-110' : isDone ? 'bg-court-ok/30 text-court-ok' : 'bg-court-line text-court-muted'
-              }`}
-            >
-              {isDone ? '✓' : step.icon}
-            </div>
-            {i < PIPE.length - 1 && (
-              <div className={`w-3 h-0.5 ${isDone ? 'bg-court-ok/50' : 'bg-court-line'}`} />
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 
 export function EdictBoard() {
   const { tasks, loadTasks } = useStore();
+  const [view, setView] = useState<'kanban' | 'list'>('kanban');
 
   useEffect(() => {
     loadTasks();
-    const timer = setInterval(loadTasks, 5000);
-    return () => clearInterval(timer);
   }, []);
 
-  const activeTasks = tasks.filter((t: any) => !t.is_archived && t.state !== 'Done' && t.state !== 'Cancelled');
-  const doneTasks = tasks.filter((t: any) => t.state === 'Done' || t.state === 'Cancelled');
+  const columns = ['Taizi', 'Zhongshu', 'Menxia', 'Shangshu', 'Done'];
+  const columnTasks: Record<string, any[]> = {};
+  for (const col of columns) {
+    columnTasks[col] = tasks.filter((t: any) => t.state === col);
+  }
+  const otherTasks = tasks.filter((t: any) => !columns.includes(t.state) && t.state !== 'Rejected');
+  const rejectedTasks = tasks.filter((t: any) => t.state === 'Rejected');
 
   return (
-    <div className="p-4 space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-serif font-bold text-court-warn">旨意看板</h2>
-        <div className="flex gap-2">
-          <span className="court-badge bg-court-acc/15 text-court-acc">
-            活跃 {activeTasks.length}
-          </span>
-          <span className="court-badge bg-court-ok/15 text-court-ok">
-            完成 {doneTasks.length}
-          </span>
+    <div className="h-full overflow-y-auto p-4 md:p-6 lg:p-8 animate-fadeIn">
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="section-title text-xl mb-0">
+          <span className="text-court-acc">📋</span> 旨意看板
+        </h2>
+        <div className="flex items-center gap-2">
+          <div className="flex gap-1">
+            <button onClick={() => setView('kanban')} className={view === 'kanban' ? 'filter-btn-active' : 'filter-btn'}>
+              看板
+            </button>
+            <button onClick={() => setView('list')} className={view === 'list' ? 'filter-btn-active' : 'filter-btn'}>
+              列表
+            </button>
+          </div>
+          <button onClick={loadTasks} className="btn-ghost btn-sm flex items-center gap-1.5">
+            <RefreshCw size={14} /> 刷新
+          </button>
         </div>
       </div>
 
-      {activeTasks.length === 0 && (
-        <div className="court-card flex flex-col items-center justify-center py-12 text-court-muted">
-          <div className="text-3xl mb-3">📋</div>
-          <p>暂无活跃旨意</p>
-          <p className="text-xs mt-1">在御书房下旨来创建任务</p>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {activeTasks.map((task: any) => (
-          <div key={task.id} className="court-card space-y-3">
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-court-muted font-mono">{task.trace_id}</p>
-                <p className="text-sm font-medium truncate mt-0.5">{task.title}</p>
+      {view === 'kanban' ? (
+        <div className="flex gap-4 overflow-x-auto pb-4">
+          {columns.map((col) => {
+            const info = STATE_INFO[col] || { label: col, color: 'border-l-gray-500' };
+            const colTasks = columnTasks[col];
+            return (
+              <div key={col} className="min-w-[260px] flex-1">
+                <div className="flex items-center gap-2 mb-3 px-1">
+                  <div className={`w-2 h-2 rounded-full ${info.color.replace('border-l-', 'bg-')}`} />
+                  <span className="text-xs font-medium text-court-text uppercase tracking-wider">{info.label}</span>
+                  <span className="text-xs text-court-muted ml-auto">{colTasks.length}</span>
+                </div>
+                <div className="space-y-2">
+                  {colTasks.length === 0 ? (
+                    <div className="theme-card-static text-center py-6 text-court-muted text-xs opacity-50">
+                      暂无
+                    </div>
+                  ) : (
+                    colTasks.map((task: any) => (
+                      <div key={task.id} className={`theme-card border-l-4 ${info.color}`}>
+                        <div className="text-sm font-medium text-court-text mb-1">{task.title || '旨意'}</div>
+                        <div className="text-[10px] font-mono text-court-muted">{task.trace_id}</div>
+                        {task.description && (
+                          <p className="text-xs text-court-muted mt-2 line-clamp-2">{task.description}</p>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
-              <span className={`court-badge shrink-0 ${STATE_COLORS[task.state] || ''}`}>
-                {STATE_LABELS[task.state] || task.state}
-              </span>
+            );
+          })}
+          {otherTasks.length > 0 && (
+            <div className="min-w-[260px] flex-1">
+              <div className="flex items-center gap-2 mb-3 px-1">
+                <ArrowRight size={12} className="text-court-acc" />
+                <span className="text-xs font-medium text-court-text uppercase tracking-wider">执行中</span>
+                <span className="text-xs text-court-muted ml-auto">{otherTasks.length}</span>
+              </div>
+              <div className="space-y-2">
+                {otherTasks.map((task: any) => {
+                  const info = STATE_INFO[task.state] || { label: task.state, color: 'border-l-gray-500' };
+                  return (
+                    <div key={task.id} className={`theme-card border-l-4 ${info.color}`}>
+                      <div className="text-sm font-medium text-court-text mb-1">{task.title || '旨意'}</div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-mono text-court-muted">{task.trace_id}</span>
+                        <span className="status-badge bg-court-panel2 text-court-muted text-[10px]">{info.label}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-
-            <MiniPipe currentState={task.state} />
-
-            {task.now_summary && (
-              <p className="text-xs text-court-muted line-clamp-2">{task.now_summary}</p>
-            )}
-
-            {task.subtasks && task.subtasks.length > 0 && (
-              <div className="space-y-1">
-                {task.subtasks.slice(0, 3).map((st: any, i: number) => (
-                  <div key={i} className="flex items-center gap-2 text-xs">
-                    <div className={`w-1.5 h-1.5 rounded-full ${st.done ? 'bg-court-ok' : 'bg-court-muted'}`} />
-                    <span className={st.done ? 'line-through text-court-muted' : ''}>{st.title || st.name}</span>
+          )}
+          {rejectedTasks.length > 0 && (
+            <div className="min-w-[260px] flex-1">
+              <div className="flex items-center gap-2 mb-3 px-1">
+                <XCircle size={12} className="text-court-danger" />
+                <span className="text-xs font-medium text-court-danger uppercase tracking-wider">已驳回</span>
+                <span className="text-xs text-court-muted ml-auto">{rejectedTasks.length}</span>
+              </div>
+              <div className="space-y-2">
+                {rejectedTasks.map((task: any) => (
+                  <div key={task.id} className="theme-card border-l-4 border-l-red-500 opacity-60">
+                    <div className="text-sm font-medium text-court-text mb-1">{task.title || '旨意'}</div>
+                    <div className="text-[10px] font-mono text-court-muted">{task.trace_id}</div>
                   </div>
                 ))}
-                {task.subtasks.length > 3 && (
-                  <p className="text-xs text-court-muted">+{task.subtasks.length - 3} 更多</p>
-                )}
               </div>
-            )}
-
-            <div className="flex items-center justify-between text-xs text-court-muted pt-2 border-t border-court-line">
-              <span>{new Date(task.created_at).toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
-              {task.department && <span>{task.department}</span>}
             </div>
-          </div>
-        ))}
-      </div>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {tasks.length === 0 ? (
+            <div className="text-center py-16 text-court-muted">
+              <LayoutDashboard size={48} className="mx-auto mb-3 opacity-30" />
+              <p>暂无旨意记录</p>
+            </div>
+          ) : (
+            tasks.map((task: any) => {
+              const info = STATE_INFO[task.state] || { label: task.state, color: 'border-l-gray-500' };
+              return (
+                <div key={task.id} className={`theme-card border-l-4 ${info.color}`}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm font-medium text-court-text">{task.title || '旨意'}</div>
+                      <div className="text-[10px] font-mono text-court-muted mt-0.5">{task.trace_id}</div>
+                    </div>
+                    <span className="status-badge bg-court-panel2 text-court-muted text-[10px]">{info.label}</span>
+                  </div>
+                  {task.description && (
+                    <p className="text-xs text-court-muted mt-2 line-clamp-2">{task.description}</p>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
     </div>
   );
 }

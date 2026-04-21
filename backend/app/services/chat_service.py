@@ -2,10 +2,10 @@ import json
 import logging
 import re
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import select, update
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.chat import ChatSession, ChatMessage
@@ -17,14 +17,20 @@ from app.services.event_bus import (
 
 logger = logging.getLogger(__name__)
 
-_DECREE_KEYWORDS = [
-    "下旨", "旨意", "圣旨", "命令", "任务", "执行", "开发", "设计",
-    "分析", "审查", "生成", "编写", "创建", "部署", "修复", "优化",
+_STRONG_DECREE_KEYWORDS = [
+    "下旨", "旨意", "圣旨", "命令你", "执行任务",
+    "开发一个", "编写一个", "创建一个", "部署",
+    "修复", "优化", "实现", "完成",
+    "帮我做", "帮我写", "帮我建", "帮我分析",
+]
+
+_WEAK_DECREE_KEYWORDS = [
+    "任务", "分析", "审查", "设计", "报告",
 ]
 
 _CHAT_KEYWORDS = [
-    "你好", "嗨", "在吗", "怎么样", "什么", "为什么", "如何",
-    "帮我", "请问", "能不能", "可以", "谢谢",
+    "你好", "嗨", "在吗", "怎么样", "谢谢", "再见",
+    "你是谁", "什么意思", "为什么",
 ]
 
 
@@ -85,7 +91,7 @@ class ChatService:
 
         session = await self.get_session(session_id)
         if session:
-            session.updated_at = datetime.utcnow()
+            session.updated_at = datetime.now(timezone.utc)
             if not session.title and role == "user":
                 session.title = content[:50]
 
@@ -110,17 +116,33 @@ class ChatService:
         return msg
 
     def classify_message(self, content: str) -> str:
-        content_lower = content.lower().strip()
+        content_stripped = content.strip()
 
-        decree_score = sum(1 for kw in _DECREE_KEYWORDS if kw in content_lower)
-        chat_score = sum(1 for kw in _CHAT_KEYWORDS if kw in content_lower)
-
-        if decree_score > chat_score and decree_score > 0:
-            return "decree"
-        if chat_score > 0 and decree_score == 0:
+        if len(content_stripped) < 3:
             return "chat"
-        if len(content) > 50 or any(c in content for c in ["：", "：", "\n", "1.", "2.", "3."]):
+
+        strong_count = sum(1 for kw in _STRONG_DECREE_KEYWORDS if kw in content_stripped)
+        if strong_count > 0:
             return "decree"
+
+        structural_hints = 0
+        if len(content_stripped) > 50:
+            structural_hints += 1
+        if "\n" in content_stripped:
+            structural_hints += 1
+        if re.search(r'[1-9][.)、]', content_stripped):
+            structural_hints += 1
+        if any(p in content_stripped for p in ["：", ":", "步骤", "要求"]):
+            structural_hints += 1
+        if structural_hints >= 2:
+            return "decree"
+
+        weak_count = sum(1 for kw in _WEAK_DECREE_KEYWORDS if kw in content_stripped)
+        chat_count = sum(1 for kw in _CHAT_KEYWORDS if kw in content_stripped)
+
+        if weak_count > 0 and chat_count == 0:
+            return "decree"
+
         return "chat"
 
     async def handle_user_message(
@@ -161,6 +183,53 @@ class ChatService:
                 "reply_message_id": str(reply.id),
                 "content": reply.content,
             }
+
+    async def handle_user_message_stream(
+        self,
+        session_id: str,
+        content: str,
+        attachments: list[dict] | None = None,
+    ):
+        from app.services.llm_service import stream_llm_reply
+
+        user_msg = await self.send_message(
+            session_id=session_id,
+            content=content,
+            role="user",
+            msg_type="text",
+            metadata={"attachments": [a["id"] for a in (attachments or [])]},
+        )
+
+        msg_type = self.classify_message(content)
+
+        if msg_type == "decree":
+            session = await self.get_session(session_id)
+            if session:
+                session.type = "decree"
+
+            task = await self._create_task_from_decree(session_id, content, attachments)
+            yield f"data: {json.dumps({'type': 'decree', 'task_id': str(task.id), 'trace_id': task.trace_id, 'info': '旨意已下达，太子正在分拣...'}, ensure_ascii=False)}\n\n"
+            yield "data: [DONE]\n\n"
+        else:
+            history = await self._get_recent_messages(session_id, limit=10)
+            full_content = ""
+
+            yield f"data: {json.dumps({'type': 'chat_start', 'message_id': str(user_msg.id)}, ensure_ascii=False)}\n\n"
+
+            async for chunk in stream_llm_reply(content, history, agent_id="taizi"):
+                full_content += chunk
+                yield f"data: {json.dumps({'type': 'chat_chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
+
+            reply = await self.send_message(
+                session_id=session_id,
+                content=full_content,
+                role="agent",
+                agent_id="taizi",
+                msg_type="text",
+            )
+
+            yield f"data: {json.dumps({'type': 'chat_end', 'reply_message_id': str(reply.id)}, ensure_ascii=False)}\n\n"
+            yield "data: [DONE]\n\n"
 
     async def _create_task_from_decree(
         self,
@@ -260,12 +329,13 @@ class ChatService:
     async def search_messages(
         self, user_id: str, query: str, limit: int = 20
     ) -> list[ChatMessage]:
+        tsquery = func.plainto_tsquery('simple', query)
         result = await self.db.execute(
             select(ChatMessage)
             .join(ChatSession)
             .where(
                 ChatSession.user_id == user_id,
-                ChatMessage.content.ilike(f"%{query}%"),
+                func.to_tsvector('simple', ChatMessage.content).op('@@')(tsquery),
             )
             .order_by(ChatMessage.created_at.desc())
             .limit(limit)

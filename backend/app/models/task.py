@@ -1,6 +1,6 @@
 import enum
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import (
     Column, String, Text, Enum, Integer, BigInteger,
@@ -10,6 +10,10 @@ from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 
 from app.db import Base
+
+
+def _utcnow():
+    return datetime.now(timezone.utc)
 
 
 class TaskState(str, enum.Enum):
@@ -32,8 +36,8 @@ STATE_TRANSITIONS = {
     TaskState.Doing: {TaskState.Review, TaskState.Done, TaskState.Blocked, TaskState.Cancelled},
     TaskState.Review: {TaskState.Done, TaskState.Menxia, TaskState.Doing, TaskState.Cancelled},
     TaskState.Blocked: {TaskState.Taizi, TaskState.Zhongshu, TaskState.Menxia, TaskState.Assigned, TaskState.Doing},
-    TaskState.Done: set(),
-    TaskState.Cancelled: set(),
+    TaskState.Done: {TaskState.Zhongshu},
+    TaskState.Cancelled: {TaskState.Zhongshu},
 }
 
 STATE_AGENT_MAP = {
@@ -74,8 +78,8 @@ class Task(Base):
     context_chain = Column(JSONB, default=list)
     metadata_ = Column("metadata", JSONB, default=dict)
     session_id = Column(UUID(as_uuid=True), ForeignKey("chat_sessions.id"), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
     completed_at = Column(DateTime, nullable=True)
     is_archived = Column(Boolean, default=False)
 
@@ -97,6 +101,6 @@ class TaskTransition(Base):
     to_state = Column(Enum(TaskState), nullable=False)
     agent_id = Column(String(50))
     comment = Column(Text, default="")
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_utcnow)
 
     task = relationship("Task", back_populates="transitions")

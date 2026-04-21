@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+﻿FROM registry.cn-hangzhou.aliyuncs.com/library/python:3.12-slim
 
 WORKDIR /app
 
@@ -6,13 +6,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl git bash && \
     rm -rf /var/lib/apt/lists/*
 
+RUN pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/ && \
+    pip config set global.trusted-host mirrors.aliyun.com
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app/ app/
 COPY migration/ migration/
 
-RUN mkdir -p /app/uploads /app/.openclaw
+RUN mkdir -p /app/uploads
 
 EXPOSE 8000
 

@@ -4,22 +4,25 @@
 
 @layer base {
   :root {
-    --bg: #07090f;
-    --panel: #0f1219;
-    --panel2: #141824;
-    --line: #1c2236;
-    --text: #dde4f8;
-    --muted: #5a6b92;
-    --ok: #2ecc8a;
-    --warn: #f5c842;
-    --danger: #ff5270;
-    --acc: #6a9eff;
-    --acc2: #a07aff;
+    --bg-primary: #0d0d1a;
+    --bg-secondary: #1a1a2e;
+    --bg-tertiary: #16213e;
+    --bg-sidebar: #0f0f23;
+    --accent: #d4a574;
+    --accent-glow: rgba(212, 165, 116, 0.15);
+    --border-accent: rgba(212, 165, 116, 0.20);
+    --text-primary: #e5e5e5;
+    --text-secondary: #a3a3a3;
+    --text-tertiary: #666666;
+    --ok: #22c55e;
+    --warn: #eab308;
+    --danger: #ef4444;
+    --info: #3b82f6;
   }
 
   * {
     scrollbar-width: thin;
-    scrollbar-color: var(--line) transparent;
+    scrollbar-color: var(--bg-tertiary) transparent;
   }
 
   *::-webkit-scrollbar {
@@ -29,43 +32,143 @@
     background: transparent;
   }
   *::-webkit-scrollbar-thumb {
-    background: var(--line);
+    background: var(--bg-tertiary);
     border-radius: 3px;
   }
 }
 
 @layer components {
-  .court-card {
-    @apply bg-court-panel border border-court-line rounded-xl p-4 transition-all duration-200;
+  .theme-card {
+    @apply bg-[#1a1a2e] rounded-lg p-3 sm:p-4 transition-all duration-200;
   }
-  .court-card:hover {
-    @apply border-court-acc/30 -translate-y-0.5 shadow-lg shadow-court-acc/5;
-  }
-
-  .court-btn {
-    @apply px-4 py-2 rounded-lg font-medium text-sm transition-all duration-200;
-  }
-  .court-btn-primary {
-    @apply court-btn bg-court-acc text-white hover:bg-court-acc/80;
-  }
-  .court-btn-ghost {
-    @apply court-btn text-court-muted hover:text-court-text hover:bg-court-panel2;
+  .theme-card:hover {
+    @apply -translate-y-0.5 shadow-lg;
+    box-shadow: 0 4px 20px rgba(212, 165, 116, 0.08);
   }
 
-  .court-badge {
+  .theme-card-static {
+    @apply bg-[#1a1a2e] rounded-lg p-3 sm:p-4;
+  }
+
+  .stat-card {
+    @apply theme-card-static;
+  }
+  .stat-label {
+    @apply text-[10px] uppercase tracking-wider text-[#a3a3a3] mb-1;
+  }
+  .stat-value {
+    @apply font-mono text-lg sm:text-2xl text-[#d4a574];
+  }
+
+  .accent-border-left {
+    border-left: 3px solid var(--accent);
+  }
+
+  .status-badge {
     @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium;
+  }
+  .status-online {
+    @apply status-badge bg-green-500/20 text-green-400;
+  }
+  .status-offline {
+    @apply status-badge bg-gray-500/20 text-gray-400;
+  }
+  .status-busy {
+    @apply status-badge bg-yellow-500/20 text-yellow-400;
+  }
+  .status-error {
+    @apply status-badge bg-red-500/20 text-red-400;
+  }
+
+  .btn-accent {
+    @apply px-4 py-2 rounded-lg font-medium text-sm transition-all duration-200
+           bg-gradient-to-r from-[#d4a574] to-[#c49464] text-[#0d0d1a]
+           hover:shadow-lg hover:shadow-[#d4a574]/20;
+  }
+  .btn-ghost {
+    @apply px-4 py-2 rounded-lg font-medium text-sm transition-all duration-200
+           border border-[rgba(212,165,116,0.3)] text-[#d4a574]
+           hover:bg-[#d4a574]/10;
+  }
+  .btn-sm {
+    @apply px-2.5 py-1 rounded text-xs font-medium transition-all duration-200;
+  }
+
+  .filter-btn {
+    @apply px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200
+           border border-transparent text-[#a3a3a3]
+           hover:text-[#e5e5e5] hover:bg-[#16213e];
+  }
+  .filter-btn-active {
+    @apply filter-btn bg-[#d4a574]/20 text-[#d4a574] border-[#d4a574]/30;
   }
 
   .chat-bubble {
     @apply max-w-[80%] px-4 py-3 rounded-2xl text-sm leading-relaxed;
   }
   .chat-bubble-user {
-    @apply chat-bubble bg-court-acc/20 text-court-text ml-auto rounded-br-md;
+    @apply chat-bubble bg-[#d4a574]/20 text-[#e5e5e5] ml-auto rounded-br-md;
   }
   .chat-bubble-agent {
-    @apply chat-bubble bg-court-panel2 text-court-text mr-auto rounded-bl-md border border-court-line;
+    @apply chat-bubble bg-[#1a1a2e] text-[#e5e5e5] mr-auto rounded-bl-md border border-[rgba(212,165,116,0.15)];
   }
   .chat-bubble-system {
-    @apply chat-bubble bg-court-acc2/10 text-court-acc2 mx-auto text-center text-xs rounded-md;
+    @apply chat-bubble bg-[#d4a574]/10 text-[#d4a574] mx-auto text-center text-xs rounded-md;
   }
+
+  .section-title {
+    @apply text-base font-serif font-bold text-[#e5e5e5] mb-4 flex items-center gap-2;
+  }
+
+  .progress-bar {
+    @apply h-2 rounded-full bg-[#0d0d1a] overflow-hidden;
+  }
+  .progress-fill {
+    @apply h-full rounded-full transition-all duration-500;
+  }
+
+  .tab-btn {
+    @apply px-4 py-2 text-sm font-medium transition-all duration-200
+           text-[#a3a3a3] border-b-2 border-transparent
+           hover:text-[#e5e5e5];
+  }
+  .tab-btn-active {
+    @apply tab-btn text-[#d4a574] border-[#d4a574];
+  }
+
+  .input-field {
+    @apply w-full bg-[#0d0d1a] border border-[rgba(212,165,116,0.2)] rounded-lg px-3 py-2
+           text-sm text-[#e5e5e5] outline-none
+           focus:border-[#d4a574] transition-colors;
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(12px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.animate-slideIn {
+  animation: slideIn 0.2s ease-out;
+}
+
+.prose pre {
+  background: #0d0d1a;
+  border: 1px solid rgba(212, 165, 116, 0.15);
+  border-radius: 0.5rem;
+  padding: 1rem;
+}
+.prose code {
+  color: #d4a574;
+}
+.prose code::before,
+.prose code::after {
+  content: none;
 }

@@ -1,6 +1,7 @@
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,6 +11,17 @@ from app.services.task_service import TaskService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
+
+
+class TransitionRequest(BaseModel):
+    new_state: str
+    agent_id: str | None = None
+    comment: str = ""
+
+
+class DispatchRequest(BaseModel):
+    agent_id: str
+    message: str = ""
 
 
 @router.get("")
@@ -63,15 +75,13 @@ async def get_task(
 @router.post("/{task_id}/transition")
 async def transition_task(
     task_id: str,
-    new_state: str = ...,
-    agent_id: str | None = None,
-    comment: str = "",
+    req: TransitionRequest,
     db: AsyncSession = Depends(get_db),
 ):
     svc = TaskService(db)
     try:
         task = await svc.transition_state(
-            task_id, TaskState(new_state), agent_id, comment
+            task_id, TaskState(req.new_state), req.agent_id, req.comment
         )
         return _serialize_task(task)
     except ValueError as e:
@@ -91,12 +101,11 @@ async def archive_task(
 @router.post("/{task_id}/dispatch")
 async def dispatch_task(
     task_id: str,
-    agent_id: str = ...,
-    message: str = "",
+    req: DispatchRequest,
     db: AsyncSession = Depends(get_db),
 ):
     svc = TaskService(db)
-    await svc.request_dispatch(task_id, agent_id, message)
+    await svc.request_dispatch(task_id, req.agent_id, req.message)
     return {"status": "dispatch_requested"}
 
 

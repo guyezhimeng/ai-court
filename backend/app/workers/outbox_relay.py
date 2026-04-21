@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+from datetime import datetime, timezone
 
 from sqlalchemy import select, update
 
@@ -12,7 +13,6 @@ logger = logging.getLogger(__name__)
 
 BATCH_SIZE = 50
 MAX_ATTEMPTS = 5
-POLL_INTERVAL = 1.0
 
 
 class OutboxRelay:
@@ -30,14 +30,20 @@ class OutboxRelay:
         self._running = False
 
     async def _relay_loop(self):
+        wait_time = 0.1
         while self._running:
             try:
-                await self._relay_cycle()
+                processed = await self._relay_cycle()
+                if processed > 0:
+                    wait_time = 0.1
+                else:
+                    wait_time = min(wait_time * 2, 5.0)
             except Exception as e:
                 logger.error(f"Outbox relay error: {e}")
-            await asyncio.sleep(POLL_INTERVAL)
+                wait_time = 5.0
+            await asyncio.sleep(wait_time)
 
-    async def _relay_cycle(self):
+    async def _relay_cycle(self) -> int:
         async with async_session() as db:
             result = await db.execute(
                 select(OutboxEvent)
@@ -64,8 +70,7 @@ class OutboxRelay:
 
                     event.published = True
                     event.attempts += 1
-                    from datetime import datetime
-                    event.published_at = datetime.utcnow()
+                    event.published_at = datetime.now(timezone.utc)
                     await db.commit()
 
                 except Exception as e:
@@ -73,6 +78,8 @@ class OutboxRelay:
                     event.last_error = str(e)[:500]
                     await db.commit()
                     logger.error(f"Outbox relay failed for event {event.id}: {e}")
+
+            return len(events)
 
 
 async def run_outbox_relay():

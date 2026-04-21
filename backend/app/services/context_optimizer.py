@@ -17,6 +17,11 @@ SUMMARY_MAX_TOKENS = 200
 class ContextOptimizer:
     def __init__(self):
         self._soul_cache: dict[str, dict] = {}
+        if not AGENTS_DIR.exists():
+            logger.error(
+                f"AGENTS_DIR not found: {AGENTS_DIR}. "
+                "All agent SOUL.md will be empty!"
+            )
 
     def _estimate_tokens(self, text: str) -> int:
         cn_chars = sum(1 for c in text if "\u4e00" <= c <= "\u9fff")

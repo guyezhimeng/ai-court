@@ -1,7 +1,7 @@
 import enum
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import select, update
@@ -111,9 +111,9 @@ class TaskService:
         self.db.add(transition)
 
         task.state = new_state
-        task.updated_at = datetime.utcnow()
+        task.updated_at = datetime.now(timezone.utc)
         if new_state == TaskState.Done:
-            task.completed_at = datetime.utcnow()
+            task.completed_at = datetime.now(timezone.utc)
 
         outbox = OutboxEvent(
             topic=TOPIC_TASK_STATUS,
@@ -174,7 +174,7 @@ class TaskService:
         if not task:
             raise ValueError(f"Task {task_id} not found")
         task.now_summary = summary
-        task.updated_at = datetime.utcnow()
+        task.updated_at = datetime.now(timezone.utc)
         await self.db.commit()
         await self.db.refresh(task)
         return task
@@ -186,7 +186,7 @@ class TaskService:
         if not task:
             raise ValueError(f"Task {task_id} not found")
         task.subtasks = subtasks
-        task.updated_at = datetime.utcnow()
+        task.updated_at = datetime.now(timezone.utc)
         await self.db.commit()
         await self.db.refresh(task)
         return task
@@ -196,7 +196,7 @@ class TaskService:
         if not task:
             raise ValueError(f"Task {task_id} not found")
         task.is_archived = True
-        task.updated_at = datetime.utcnow()
+        task.updated_at = datetime.now(timezone.utc)
         await self.db.commit()
         await self.db.refresh(task)
         return task
@@ -206,7 +206,7 @@ class TaskService:
         if not task:
             raise ValueError(f"Task {task_id} not found")
         task.stall_count = (task.stall_count or 0) + 1
-        task.updated_at = datetime.utcnow()
+        task.updated_at = datetime.now(timezone.utc)
 
         outbox = OutboxEvent(
             topic=TOPIC_TASK_STALLED,

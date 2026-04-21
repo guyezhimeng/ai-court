@@ -16,6 +16,41 @@ async function postJ<T>(url: string, data?: unknown): Promise<T> {
   return res.json();
 }
 
+async function* streamPost(url: string, data: unknown): AsyncGenerator<{ type: string; content?: string; [key: string]: unknown }> {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error(`API ${res.status}: ${url}`);
+
+  const reader = res.body?.getReader();
+  if (!reader) throw new Error('No response body');
+
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      const dataStr = line.slice(6).trim();
+      if (dataStr === '[DONE]') return;
+      try {
+        yield JSON.parse(dataStr);
+      } catch {
+        continue;
+      }
+    }
+  }
+}
+
 export const api = {
   chat: {
     createSession: (userId = 'default_user', regime = 'tang-sansheng') =>
@@ -24,6 +59,8 @@ export const api = {
       fetchJ<any[]>(`${API_BASE}/api/chat/sessions?user_id=${userId}`),
     send: (sessionId: string, content: string, attachments?: string[]) =>
       postJ(`${API_BASE}/api/chat/send`, { session_id: sessionId, content, attachments }),
+    sendStream: (sessionId: string, content: string, attachments?: string[]) =>
+      streamPost(`${API_BASE}/api/chat/send`, { session_id: sessionId, content, attachments, stream: true }),
     history: (sessionId: string, limit = 50, before?: string) =>
       fetchJ<any[]>(`${API_BASE}/api/chat/history/${sessionId}?limit=${limit}${before ? `&before=${before}` : ''}`),
     search: (query: string) =>
@@ -54,6 +91,9 @@ export const api = {
   agents: {
     list: () => fetchJ<any[]>(`${API_BASE}/api/agents`),
     get: (id: string) => fetchJ<any>(`${API_BASE}/api/agents/${id}`),
+    providers: () => fetchJ<any[]>(`${API_BASE}/api/agents/providers`),
+    updateConfig: (id: string, config: Record<string, unknown>) =>
+      postJ(`${API_BASE}/api/agents/${id}/config`, config),
   },
   health: () => fetchJ<any>(`${API_BASE}/api/health`),
   liveStatus: () => fetchJ<any>(`${API_BASE}/api/live-status`),

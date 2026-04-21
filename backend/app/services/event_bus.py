@@ -1,6 +1,6 @@
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import redis.asyncio as aioredis
@@ -59,7 +59,7 @@ class EventBus:
             "producer": producer,
             "payload": json.dumps(payload or {}, ensure_ascii=False),
             "meta": json.dumps(meta or {}, ensure_ascii=False),
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
         stream_key = f"{STREAM_PREFIX}{topic}"

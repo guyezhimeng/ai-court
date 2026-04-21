@@ -2,8 +2,9 @@ import asyncio
 import json
 import logging
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 
+from app.config import settings
 from app.services.event_bus import PUBSUB_PREFIX, get_event_bus
 
 logger = logging.getLogger(__name__)
@@ -44,9 +45,23 @@ manager = ConnectionManager()
 
 
 @router.websocket("/ws")
-async def websocket_endpoint(ws: WebSocket):
-    client_id = id(ws)
-    await manager.connect(str(client_id), ws)
+async def websocket_endpoint(
+    ws: WebSocket,
+    token: str | None = Query(default=None),
+):
+    if settings.app_secret_key != "change-me-in-production":
+        if not token:
+            await ws.close(code=4001, reason="Missing token")
+            return
+        try:
+            from jose import jwt
+            jwt.decode(token, settings.app_secret_key, algorithms=["HS256"])
+        except Exception:
+            await ws.close(code=4001, reason="Invalid token")
+            return
+
+    client_id = str(id(ws))
+    await manager.connect(client_id, ws)
 
     bus = await get_event_bus()
     pubsub = await bus.subscribe_pubsub(["*"])
@@ -67,16 +82,30 @@ async def websocket_endpoint(ws: WebSocket):
 
     try:
         while True:
-            data = await ws.receive_json()
+            try:
+                data = await asyncio.wait_for(ws.receive_json(), timeout=60)
+            except asyncio.TimeoutError:
+                await ws.send_json({"type": "ping"})
+                try:
+                    pong = await asyncio.wait_for(ws.receive_json(), timeout=10)
+                    if pong.get("type") != "pong":
+                        break
+                except asyncio.TimeoutError:
+                    break
+                continue
+
             if data.get("type") == "ping":
                 await ws.send_json({"type": "pong"})
+            elif data.get("type") == "pong":
+                pass
+
     except WebSocketDisconnect:
-        pass
+        logger.info("WebSocket client disconnected")
     except Exception:
         pass
     finally:
         relay_task.cancel()
-        manager.disconnect(str(client_id))
+        manager.disconnect(client_id)
         try:
             await pubsub.unsubscribe()
         except Exception:

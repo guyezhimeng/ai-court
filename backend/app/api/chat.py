@@ -2,6 +2,7 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,6 +23,7 @@ class SendMessageRequest(BaseModel):
     session_id: str
     content: str
     attachments: list[str] | None = None
+    stream: bool = False
 
 
 class SearchRequest(BaseModel):
@@ -76,6 +78,26 @@ async def send_message(
     db: AsyncSession = Depends(get_db),
     bus: EventBus = Depends(get_event_bus),
 ):
+    if req.stream:
+        svc = ChatService(db, bus)
+        attachments = None
+        if req.attachments:
+            attachments = [{"id": aid} for aid in req.attachments]
+
+        return StreamingResponse(
+            svc.handle_user_message_stream(
+                session_id=req.session_id,
+                content=req.content,
+                attachments=attachments,
+            ),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
     svc = ChatService(db, bus)
     attachments = None
     if req.attachments:

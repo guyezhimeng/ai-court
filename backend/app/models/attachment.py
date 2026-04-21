@@ -1,8 +1,9 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import Column, String, Text, BigInteger, DateTime, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import relationship
 
 from app.db import Base
 
@@ -20,7 +21,7 @@ class Attachment(Base):
     ocr_text = Column(Text, default="")
     extracted_text = Column(Text, default="")
     thumbnail_url = Column(String(500), default="")
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     message = relationship("ChatMessage", back_populates="attachments")
     task = relationship("Task", back_populates="attachments")

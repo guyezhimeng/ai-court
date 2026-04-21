@@ -1,11 +1,23 @@
 import { cn } from '@/lib/utils';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   MessageSquare, LayoutDashboard, Activity, Users,
   ScrollText, Newspaper, Settings, RefreshCw, PanelLeftClose, PanelLeft,
 } from 'lucide-react';
-import { useStore, TabKey } from '@/store';
+import { useStore } from '@/store';
 
-const navItems: { key: TabKey; label: string; icon: any }[] = [
+const TAB_ROUTES: Record<string, string> = {
+  chat: '/',
+  board: '/board',
+  monitor: '/monitor',
+  officials: '/officials',
+  memorials: '/memorials',
+  news: '/news',
+  settings: '/settings',
+  regime: '/regime',
+};
+
+const navItems = [
   { key: 'chat', label: '御书房', icon: MessageSquare },
   { key: 'board', label: '旨意看板', icon: LayoutDashboard },
   { key: 'monitor', label: '省部调度', icon: Activity },
@@ -17,18 +29,24 @@ const navItems: { key: TabKey; label: string; icon: any }[] = [
 ];
 
 export function Sidebar() {
-  const { activeTab, setActiveTab, sidebarOpen, toggleSidebar } = useStore();
+  const { sidebarOpen, toggleSidebar } = useStore();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const activeTab = Object.entries(TAB_ROUTES).find(
+    ([_, path]) => location.pathname === path
+  )?.[0] || 'chat';
 
   return (
     <aside
       className={cn(
-        'flex flex-col h-screen bg-court-panel border-r border-court-line transition-all duration-300',
+        'flex flex-col h-screen bg-court-sidebar border-r border-court-line transition-all duration-300',
         sidebarOpen ? 'w-56' : 'w-16'
       )}
     >
       <div className="flex items-center justify-between h-14 px-3 border-b border-court-line">
         {sidebarOpen && (
-          <h1 className="text-base font-serif font-bold text-court-warn tracking-wide">
+          <h1 className="text-base font-serif font-bold text-court-acc tracking-wide">
             AI 朝廷
           </h1>
         )}
@@ -44,11 +62,11 @@ export function Sidebar() {
         {navItems.map(({ key, label, icon: Icon }) => (
           <button
             key={key}
-            onClick={() => setActiveTab(key)}
+            onClick={() => navigate(TAB_ROUTES[key])}
             className={cn(
               'flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm transition-all duration-200',
               activeTab === key
-                ? 'bg-court-acc/15 text-court-acc font-medium'
+                ? 'bg-court-acc/15 text-court-acc font-medium accent-border-left'
                 : 'text-court-muted hover:text-court-text hover:bg-court-panel2'
             )}
           >
@@ -61,7 +79,7 @@ export function Sidebar() {
       <div className="p-3 border-t border-court-line">
         {sidebarOpen && (
           <div className="text-xs text-court-muted text-center">
-            三省六部 v2.0
+            三省六部 v3.0
           </div>
         )}
       </div>

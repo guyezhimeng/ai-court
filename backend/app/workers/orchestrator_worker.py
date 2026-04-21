@@ -1,7 +1,8 @@
 import asyncio
 import json
 import logging
-from datetime import datetime, timedelta
+import os
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 
@@ -15,11 +16,12 @@ from app.services.event_bus import (
     TOPIC_TASK_DISPATCH,
 )
 from app.services.task_service import TaskService
+from app.services.review_strategy import review_strategy
 
 logger = logging.getLogger(__name__)
 
 GROUP = "orchestrator"
-CONSUMER = "orch-1"
+CONSUMER = os.getenv("WORKER_ID", f"orch-{os.getpid()}")
 MAX_STALL_RETRIES = 2
 
 _ESCALATION_PATH = {
@@ -53,7 +55,10 @@ class OrchestratorWorker:
         )
 
     async def stop(self):
+        logger.info("OrchestratorWorker stopping...")
         self._running = False
+        await asyncio.sleep(1)
+        logger.info("OrchestratorWorker stopped")
 
     async def _consume_loop(self):
         while self._running:
@@ -111,6 +116,10 @@ class OrchestratorWorker:
         if not task_id or not new_state:
             return
 
+        if new_state == "Menxia":
+            await self._handle_menxia_review(task_id, payload)
+            return
+
         agent_id = self._get_next_agent(new_state)
         if agent_id:
             logger.info(f"Task {task_id}: state={new_state}, dispatching to {agent_id}")
@@ -126,6 +135,29 @@ class OrchestratorWorker:
                     "message": "",
                 },
             )
+
+    async def _handle_menxia_review(self, task_id: str, payload: dict):
+        async with async_session() as db:
+            svc = TaskService(db)
+            task = await svc.get_task(task_id)
+            if not task:
+                return
+
+            review_level = review_strategy.decide_review_level(task)
+            review_result = await review_strategy.execute_review(task, review_level)
+
+            result_text = review_result.get("result", "")
+
+            if "驳回" in result_text:
+                await svc.transition_state(
+                    task_id, TaskState.Zhongshu, "menxia",
+                    f"门下驳回：{review_result.get('reason', '')}\n{result_text[:200]}"
+                )
+            else:
+                await svc.transition_state(
+                    task_id, TaskState.Assigned, "menxia",
+                    f"门下审核通过（{review_level}）：{review_result.get('reason', '')}"
+                )
 
     def _get_next_agent(self, state: str) -> str | None:
         mapping = {
@@ -178,7 +210,8 @@ class OrchestratorWorker:
             await asyncio.sleep(60)
 
     async def _detect_stalled_tasks(self):
-        threshold = datetime.utcnow() - timedelta(seconds=180)
+        from app.config import settings
+        threshold = datetime.now(timezone.utc) - timedelta(seconds=settings.stall_threshold_sec)
         async with async_session() as db:
             result = await db.execute(
                 select(Task).where(
@@ -191,6 +224,28 @@ class OrchestratorWorker:
             for task in stalled:
                 svc = TaskService(db)
                 await svc.mark_stalled(str(task.id))
+
+    async def _dispatch_to_liubu(self, task: Task, departments: list[str]):
+        dispatch_tasks = []
+        for dept in departments:
+            from app.models.task import ORG_AGENT_MAP
+            agent_id = ORG_AGENT_MAP.get(dept, dept)
+            dispatch_tasks.append(
+                self.bus.publish(
+                    TOPIC_TASK_DISPATCH,
+                    trace_id=task.trace_id,
+                    event_type="task.dispatch",
+                    producer="shangshu",
+                    payload={
+                        "task_id": str(task.id),
+                        "agent_id": agent_id,
+                        "message": f"尚书省指派任务，请{dept}执行。",
+                    },
+                )
+            )
+
+        await asyncio.gather(*dispatch_tasks)
+        logger.info(f"Task {task.trace_id}: parallel dispatched to {departments}")
 
 
 async def run_orchestrator():

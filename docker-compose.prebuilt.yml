@@ -13,32 +13,28 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
-    networks:
-      - internal
 
   redis:
     image: registry.cn-hangzhou.aliyuncs.com/library/redis:7-alpine
-    command: redis-server --maxmemory 256mb --appendonly yes --requirepass ${REDIS_PASSWORD:-aicourt_redis}
+    command: redis-server --maxmemory 256mb --appendonly yes
     volumes:
       - redisdata:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-aicourt_redis}", "ping"]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
       retries: 5
     restart: unless-stopped
-    networks:
-      - internal
 
   backend:
-    build: ./backend
-    expose:
-      - "8000"
+    image: ${AI_COURT_REGISTRY:-registry.cn-hangzhou.aliyuncs.com}/aicourt/backend:${AI_COURT_TAG:-latest}
+    ports:
+      - "8000:8000"
     env_file: .env
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
-      REDIS_URL: redis://:${REDIS_PASSWORD:-aicourt_redis}@redis:6379/0
+      REDIS_URL: redis://redis:6379/0
       UPLOAD_DIR: /app/uploads
     volumes:
       - uploads:/app/uploads
@@ -49,17 +45,15 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
-    networks:
-      - internal
 
   orchestrator:
-    build: ./backend
+    image: ${AI_COURT_REGISTRY:-registry.cn-hangzhou.aliyuncs.com}/aicourt/backend:${AI_COURT_TAG:-latest}
     command: python -m app.workers.orchestrator_worker
     env_file: .env
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
-      REDIS_URL: redis://:${REDIS_PASSWORD:-aicourt_redis}@redis:6379/0
+      REDIS_URL: redis://redis:6379/0
     volumes:
       - ./agents:/app/agents
     depends_on:
@@ -68,17 +62,15 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
-    networks:
-      - internal
 
   dispatcher:
-    build: ./backend
+    image: ${AI_COURT_REGISTRY:-registry.cn-hangzhou.aliyuncs.com}/aicourt/backend:${AI_COURT_TAG:-latest}
     command: python -m app.workers.dispatch_worker
     env_file: .env
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
-      REDIS_URL: redis://:${REDIS_PASSWORD:-aicourt_redis}@redis:6379/0
+      REDIS_URL: redis://redis:6379/0
     volumes:
       - ./agents:/app/agents
     depends_on:
@@ -87,52 +79,27 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
-    networks:
-      - internal
 
   outbox-relay:
-    build: ./backend
+    image: ${AI_COURT_REGISTRY:-registry.cn-hangzhou.aliyuncs.com}/aicourt/backend:${AI_COURT_TAG:-latest}
     command: python -m app.workers.outbox_relay
     env_file: .env
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
-      REDIS_URL: redis://:${REDIS_PASSWORD:-aicourt_redis}@redis:6379/0
+      REDIS_URL: redis://redis:6379/0
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
     restart: unless-stopped
-    networks:
-      - internal
-
-  pg-backup:
-    image: registry.cn-hangzhou.aliyuncs.com/library/postgres:16-alpine
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      PGPASSWORD: ${POSTGRES_PASSWORD:-aicourt_secret}
-    volumes:
-      - ./backups:/backups
-    entrypoint: >
-      sh -c "while true; do
-        pg_dump -h postgres -U ${POSTGRES_USER:-aicourt} ${POSTGRES_DB:-aicourt} | gzip > /backups/backup_$$(date +%Y%m%d_%H%M%S).sql.gz;
-        find /backups -name '*.sql.gz' -mtime +7 -delete;
-        sleep 86400;
-      done"
-    restart: unless-stopped
-    networks:
-      - internal
 
   frontend:
-    build: ./frontend
+    image: ${AI_COURT_REGISTRY:-registry.cn-hangzhou.aliyuncs.com}/aicourt/frontend:${AI_COURT_TAG:-latest}
     depends_on:
       - backend
     restart: unless-stopped
-    networks:
-      - internal
 
   nginx:
     image: registry.cn-hangzhou.aliyuncs.com/library/nginx:alpine
@@ -144,12 +111,6 @@ services:
       - frontend
       - backend
     restart: unless-stopped
-    networks:
-      - internal
-
-networks:
-  internal:
-    driver: bridge
 
 volumes:
   pgdata:

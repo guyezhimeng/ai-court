@@ -1,7 +1,9 @@
 import logging
+import mimetypes
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
+from pathlib import PurePosixPath
 from typing import Optional
 
 import aiofiles
@@ -26,6 +28,12 @@ ALLOWED_CODE_EXTENSIONS = {
     ".html", ".css", ".json", ".yaml", ".yml", ".md", ".sql",
 }
 ALLOWED_ARCHIVE_TYPES = {"application/zip", "application/x-zip-compressed"}
+
+SAFE_EXTENSIONS = {
+    '.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg',
+    '.pdf', '.txt', '.md', '.json', '.csv', '.zip',
+    '.py', '.js', '.ts', '.html', '.css', '.docx', '.xlsx',
+}
 
 MAX_IMAGE_SIZE = 10 * 1024 * 1024
 MAX_DOC_SIZE = 20 * 1024 * 1024
@@ -66,6 +74,17 @@ class UploadService:
             return "code"
         return "other"
 
+    def _generate_safe_filename(self, filename: str, content_type: str) -> str:
+        ext_from_mime = mimetypes.guess_extension(content_type) or ""
+        if ext_from_mime not in SAFE_EXTENSIONS:
+            ext_from_mime = ""
+
+        orig_ext = PurePosixPath(filename).suffix.lower()
+        if not ext_from_mime and orig_ext in SAFE_EXTENSIONS:
+            ext_from_mime = orig_ext
+
+        return f"{uuid.uuid4().hex}{ext_from_mime}"
+
     async def upload_file(
         self,
         filename: str,
@@ -80,9 +99,8 @@ class UploadService:
 
         file_id = uuid.uuid4()
         category = self._get_file_category(content_type, filename)
-        date_path = datetime.utcnow().strftime("%Y/%m/%d")
-        ext = os.path.splitext(filename)[1] or ""
-        stored_name = f"{file_id}{ext}"
+        date_path = datetime.now(timezone.utc).strftime("%Y/%m/%d")
+        stored_name = self._generate_safe_filename(filename, content_type)
 
         if settings.oss_enabled:
             storage_url = await self._upload_to_oss(
@@ -145,6 +163,30 @@ class UploadService:
             raise
 
     async def _extract_ocr_text(self, content: bytes, content_type: str) -> str:
+        try:
+            import base64
+            import httpx
+
+            b64 = base64.b64encode(content).decode()
+
+            messages = [{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "提取图片中的所有文字，直接输出内容，不要任何说明。"},
+                    {"type": "image_url", "image_url": {"url": f"data:{content_type};base64,{b64}"}}
+                ]
+            }]
+
+            async with httpx.AsyncClient(timeout=60) as client:
+                resp = await client.post(
+                    f"{settings.llm_api_url}/chat/completions",
+                    headers={"Authorization": f"Bearer {settings.llm_api_key}"},
+                    json={"model": settings.llm_model, "messages": messages, "max_tokens": 2000}
+                )
+                if resp.status_code == 200:
+                    return resp.json()["choices"][0]["message"]["content"]
+        except Exception as e:
+            logger.warning(f"OCR failed: {e}")
         return ""
 
     async def _generate_thumbnail(
@@ -179,11 +221,23 @@ class UploadService:
 
     async def _extract_document_text(self, content: bytes, filename: str) -> str:
         ext = os.path.splitext(filename)[1].lower()
-        if ext == ".txt" or ext == ".md":
-            try:
+        try:
+            if ext in (".txt", ".md"):
                 return content.decode("utf-8", errors="replace")[:5000]
-            except Exception:
-                return ""
+            elif ext == ".pdf":
+                import pdfplumber
+                import io
+                with pdfplumber.open(io.BytesIO(content)) as pdf:
+                    text = "\n".join(p.extract_text() or "" for p in pdf.pages[:10])
+                    return text[:5000]
+            elif ext == ".docx":
+                import docx
+                import io
+                doc = docx.Document(io.BytesIO(content))
+                text = "\n".join(p.text for p in doc.paragraphs)
+                return text[:5000]
+        except Exception as e:
+            logger.warning(f"Document extraction failed: {e}")
         return ""
 
     async def get_attachment(self, attachment_id: str) -> Attachment | None:

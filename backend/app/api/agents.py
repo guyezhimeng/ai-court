@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.config import settings
+from app.services.llm_service import PROVIDER_PRESETS
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/agents", tags=["agents"])
@@ -44,6 +45,20 @@ def _save_agent_config(agent_id: str, config: dict):
     config_file.write_text(json.dumps(config, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
+@router.get("/providers")
+async def list_providers():
+    providers = []
+    for key, preset in PROVIDER_PRESETS.items():
+        providers.append({
+            "id": key,
+            "name": preset["name"],
+            "api_url": preset["api_url"],
+            "models": preset["models"],
+            "default_model": preset["default_model"],
+        })
+    return providers
+
+
 @router.get("")
 async def list_agents():
     agents = []
@@ -58,6 +73,15 @@ async def list_agents():
             "soul_loaded": soul_file.exists(),
             "model": cfg.get("model", ""),
             "has_custom_api": bool(cfg.get("api_url")),
+            "config": {
+                "model": cfg.get("model", ""),
+                "api_url": cfg.get("api_url", ""),
+                "has_api_key": bool(cfg.get("api_key")),
+                "max_tokens": cfg.get("max_tokens", 0),
+                "temperature": cfg.get("temperature", 0.5),
+                "effective_api_url": cfg.get("api_url") or settings.llm_api_url,
+                "effective_model": cfg.get("model") or settings.llm_model,
+            },
         })
     return agents
 
@@ -85,8 +109,10 @@ async def get_agent(agent_id: str):
             "model": cfg.get("model", ""),
             "api_url": cfg.get("api_url", ""),
             "has_api_key": bool(cfg.get("api_key")),
-            "max_tokens": cfg.get("max_tokens", 1500),
+            "max_tokens": cfg.get("max_tokens", 0),
             "temperature": cfg.get("temperature", 0.5),
+            "effective_api_url": cfg.get("api_url") or settings.llm_api_url,
+            "effective_model": cfg.get("model") or settings.llm_model,
         },
     }
 
@@ -116,7 +142,7 @@ async def get_agent_config(agent_id: str):
         "model": cfg.get("model", ""),
         "api_url": cfg.get("api_url", ""),
         "has_api_key": bool(cfg.get("api_key")),
-        "max_tokens": cfg.get("max_tokens", 1500),
+        "max_tokens": cfg.get("max_tokens", 0),
         "temperature": cfg.get("temperature", 0.5),
         "effective_api_url": cfg.get("api_url") or settings.llm_api_url,
         "effective_model": cfg.get("model") or settings.llm_model,
@@ -159,6 +185,6 @@ async def update_agent_config(agent_id: str, req: UpdateAgentConfigRequest):
         "model": cfg.get("model", ""),
         "api_url": cfg.get("api_url", ""),
         "has_api_key": bool(cfg.get("api_key")),
-        "max_tokens": cfg.get("max_tokens", 1500),
+        "max_tokens": cfg.get("max_tokens", 0),
         "temperature": cfg.get("temperature", 0.5),
     }}
